@@ -129,7 +129,7 @@ jobs:
           echo "FPK_NAME=${FPK_NAME}" >> "$GITHUB_ENV"
 
       - name: Read manifest for release notes
-        id: manifest
+        id: manifest_final
         run: |
           VERSION=$(grep "^version" manifest | awk -F'=' '{print $2}' | tr -d ' ')
           DISPLAY_NAME=$(grep "^display_name" manifest | awk -F'=' '{print $2}' | tr -d ' ')
@@ -145,11 +145,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: "${{ steps.manifest.outputs.display_name }} v${{ steps.manifest.outputs.version }} for fnOS"
+          name: "${{ steps.manifest_final.outputs.display_name }} v${{ steps.manifest_final.outputs.version }} for fnOS"
           body: |
-            ## ${{ steps.manifest.outputs.display_name }}
+            ## ${{ steps.manifest_final.outputs.display_name }}
             
-            ${{ steps.manifest.outputs.desc }}
+            ${{ steps.manifest_final.outputs.desc }}
             
             ### 安装说明
             
@@ -159,7 +159,7 @@ jobs:
             
             ### 端口
             
-            - 服务端口: `${{ steps.manifest.outputs.service_port }}`
+            - 服务端口: `${{ steps.manifest_final.outputs.service_port }}`
             
             ### 依赖
             
