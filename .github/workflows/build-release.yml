@@ -19,8 +19,10 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-and-release:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -126,27 +128,6 @@ jobs:
           # Upload artifact
           echo "FPK_NAME=${FPK_NAME}" >> "$GITHUB_ENV"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: fpk-package
-          path: ${{ env.FPK_NAME }}
-          retention-days: 5
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: fpk-package
-
       - name: Read manifest for release notes
         id: manifest
         run: |
@@ -189,7 +170,5 @@ jobs:
             - [GitHub](https://github.com/${{ github.repository }})
           files: |
             *.fpk
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
