@@ -1,0 +1,15 @@
+appname=chaoxing-signin
+version=4.3.5
+display_name=超星签到
+desc=超星学习通签到 Web 服务，支持普通、位置、二维码、拍照等签到方式。
+platform=x86
+source=thirdparty
+maintainer=sweetcornna
+maintainer_url=https://github.com/sweetcornna/chaoxing-signin
+distributor=local
+distributor_url=https://github.com/sweetcornna/chaoxing-signin
+desktop_uidir=ui
+desktop_applaunchname=chaoxing-signin.Application
+service_port=5000
+checkport=true
+install_dep_apps=nodejs_v22

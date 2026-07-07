@@ -1,0 +1,195 @@
+name: Build and Release fnOS Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (leave empty for auto-detect from manifest)'
+        required: false
+        default: ''
+      revision:
+        description: 'Revision suffix (e.g., r2 for re-release)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read manifest
+        id: manifest
+        run: |
+          VERSION=$(grep "^version" manifest | awk -F'=' '{print $2}' | tr -d ' ')
+          APPNAME=$(grep "^appname" manifest | awk -F'=' '{print $2}' | tr -d ' ')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "appname=${APPNAME}" >> "$GITHUB_OUTPUT"
+          echo "App: ${APPNAME}, Version: ${VERSION}"
+
+      - name: Determine version
+        id: version
+        run: |
+          INPUT_VERSION="${{ inputs.version }}"
+          MANIFEST_VERSION="${{ steps.manifest.outputs.version }}"
+          INPUT_REVISION="${{ inputs.revision }}"
+          
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="$MANIFEST_VERSION"
+          fi
+          
+          if [ -n "$INPUT_REVISION" ]; then
+            VERSION="${VERSION}-${INPUT_REVISION}"
+          fi
+          
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Final version: ${VERSION}"
+
+      - name: Build FPK package
+        run: |
+          APPNAME="${{ steps.manifest.outputs.appname }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          echo "Building FPK package: ${APPNAME} v${VERSION}"
+          
+          # Create temp build directory
+          BUILD_DIR=$(mktemp -d)
+          PKG_DIR="${BUILD_DIR}/package"
+          mkdir -p "${PKG_DIR}/cmd"
+          
+          # Copy app.tgz
+          cp app.tgz "${PKG_DIR}/"
+          
+          # Copy shared framework cmd/* (exclude .md files)
+          for f in cmd/*; do
+            case "$(basename "$f")" in
+              *.md|*.MD) continue ;;
+            esac
+            cp "$f" "${PKG_DIR}/cmd/"
+          done
+          
+          # Copy config/
+          cp -a config "${PKG_DIR}/"
+          
+          # Copy wizard/ if exists
+          if [ -d "wizard" ]; then
+            cp -a wizard "${PKG_DIR}/"
+          fi
+          
+          # Copy icons
+          cp ICON*.PNG "${PKG_DIR}/" 2>/dev/null || true
+          
+          # Copy ui/ if exists
+          if [ -d "app/ui" ]; then
+            cp -a app/ui "${PKG_DIR}/"
+          fi
+          
+          # Copy manifest and update version
+          cp manifest "${PKG_DIR}/"
+          if [ -n "$VERSION" ]; then
+            sed -i "s/^version.*/version         = ${VERSION}/" "${PKG_DIR}/manifest"
+          fi
+          
+          # Calculate checksum
+          CHECKSUM=$(md5sum "${PKG_DIR}/app.tgz" | cut -d' ' -f1)
+          sed -i "s/^checksum.*/checksum        = ${CHECKSUM}/" "${PKG_DIR}/manifest"
+          
+          # Add fpk_version if not present
+          if ! grep -q "^fpk_version" "${PKG_DIR}/manifest"; then
+            echo "fpk_version     = ${VERSION}" >> "${PKG_DIR}/manifest"
+          fi
+          
+          # Determine platform from manifest
+          PLATFORM=$(grep "^platform" "${PKG_DIR}/manifest" | awk -F'=' '{print $2}' | tr -d ' ')
+          if [ -z "$PLATFORM" ]; then
+            PLATFORM="x86"
+          fi
+          
+          # Create FPK package
+          FPK_NAME="${APPNAME}_${VERSION}_${PLATFORM}.fpk"
+          cd "${PKG_DIR}"
+          tar -czf "${OLDPWD}/${FPK_NAME}" *
+          cd "${OLDPWD}"
+          
+          echo "Built: ${FPK_NAME}"
+          ls -lh "${FPK_NAME}"
+          
+          # Upload artifact
+          echo "FPK_NAME=${FPK_NAME}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fpk-package
+          path: ${{ env.FPK_NAME }}
+          retention-days: 5
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fpk-package
+
+      - name: Read manifest for release notes
+        id: manifest
+        run: |
+          VERSION=$(grep "^version" manifest | awk -F'=' '{print $2}' | tr -d ' ')
+          DISPLAY_NAME=$(grep "^display_name" manifest | awk -F'=' '{print $2}' | tr -d ' ')
+          DESC=$(grep "^desc" manifest | awk -F'=' '{print $2}' | tr -d ' ')
+          SERVICE_PORT=$(grep "^service_port" manifest | awk -F'=' '{print $2}' | tr -d ' ')
+          
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "display_name=${DISPLAY_NAME}" >> "$GITHUB_OUTPUT"
+          echo "desc=${DESC}" >> "$GITHUB_OUTPUT"
+          echo "service_port=${SERVICE_PORT}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "${{ steps.manifest.outputs.display_name }} v${{ steps.manifest.outputs.version }} for fnOS"
+          body: |
+            ## ${{ steps.manifest.outputs.display_name }}
+            
+            ${{ steps.manifest.outputs.desc }}
+            
+            ### 安装说明
+            
+            1. 下载下方 `.fpk` 文件
+            2. 在 fnOS 应用中心选择「手动安装」
+            3. 上传 `.fpk` 文件并完成安装
+            
+            ### 端口
+            
+            - 服务端口: `${{ steps.manifest.outputs.service_port }}`
+            
+            ### 依赖
+            
+            - 需要安装 `nodejs_v22` 运行时
+            
+            ### 来源
+            
+            - [GitHub](https://github.com/${{ github.repository }})
+          files: |
+            *.fpk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,94 @@
+#!/bin/bash
+
+LOG_FILE="${TRIM_PKGVAR}/chaoxing-signin.log"
+PID_FILE="${TRIM_PKGVAR}/chaoxing-signin.pid"
+
+export PATH=/var/apps/nodejs_v22/target/bin:$PATH
+
+APP_DIR="${TRIM_APPDEST}/server"
+SERVER_JS="${APP_DIR}/apps/server/build/serve.js"
+CMD="CHAOXING_DATA_DIR=${TRIM_PKGVAR} node ${SERVER_JS}"
+
+log_msg() {
+    mkdir -p "${TRIM_PKGVAR}" 2>/dev/null || true
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "${LOG_FILE}"
+}
+
+check_process() {
+    local pid="$1"
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+status_process() {
+    if [ -f "${PID_FILE}" ]; then
+        local pid
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if check_process "$pid"; then
+            return 0
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    return 1
+}
+
+start_process() {
+    if status_process; then
+        exit 0
+    fi
+
+    if [ ! -x "/var/apps/nodejs_v22/target/bin/node" ]; then
+        echo "nodejs_v22 runtime not found" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    fi
+
+    if [ ! -f "${SERVER_JS}" ]; then
+        echo "server file not found: ${SERVER_JS}" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    fi
+
+    mkdir -p "${TRIM_PKGVAR}/configs" 2>/dev/null || true
+    cd "${APP_DIR}" || exit 1
+    log_msg "Starting: ${CMD}"
+    bash -c "${CMD}" >> "${LOG_FILE}" 2>&1 &
+    echo "$!" > "${PID_FILE}"
+    sleep 2
+
+    if status_process; then
+        exit 0
+    fi
+
+    echo "chaoxing-signin failed to start. See ${LOG_FILE}" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+}
+
+stop_process() {
+    if [ -f "${PID_FILE}" ]; then
+        local pid
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if check_process "$pid"; then
+            kill -TERM "$pid" 2>/dev/null || true
+            sleep 2
+            check_process "$pid" && kill -KILL "$pid" 2>/dev/null || true
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    exit 0
+}
+
+case "$1" in
+    start)
+        start_process
+        ;;
+    stop)
+        stop_process
+        ;;
+    status)
+        if status_process; then
+            exit 0
+        fi
+        exit 3
+        ;;
+    *)
+        exit 1
+        ;;
+esac

@@ -1,0 +1,14 @@
+{
+    ".url": {
+        "chaoxing-signin.Application": {
+            "title": "超星签到",
+            "desc": "Chaoxing Signin",
+            "icon": "images/icon_{0}.png",
+            "type": "url",
+            "protocol": "http",
+            "port": "5000",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}
