@@ -16,7 +16,7 @@
 
 ### 手动安装
 
-1. 从 [Releases](https://github.com/sweetcornna/chaoxing-signin-fnos/releases) 页面下载最新 `.fpk` 文件
+1. 从 [Releases](https://github.com/E7G/chaoxing-signin/releases) 页面下载最新 `.fpk` 文件
 2. 在 fnOS 应用中心选择「手动安装」
 3. 上传 `.fpk` 文件并完成安装
 
@@ -47,7 +47,7 @@
 ### 项目结构
 
 ```
-chaoxing-fnos-official/
+chaoxing-signin/
 ├── app/                    # 应用代码
 │   ├── server/             # Node.js 服务端
 │   └── ui/                 # Web UI
